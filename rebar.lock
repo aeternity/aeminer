@@ -1,0 +1,13 @@
+[{<<"aecuckoo">>,
+  {git,"https://github.com/aeternity/aecuckoo.git",
+      {ref,"fa3d13e8c7003589153223f634c851d389b61b93"}},
+  0},
+ {<<"aecuckooprebuilt">>,
+  {aecuckooprebuilt_app_with_priv_from_git,
+      {git,"https://github.com/aeternity/cuckoo-prebuilt.git",
+          {ref,"90afb699dc9cc41d033a7c8551179d32b3bd569d"}}},
+  0},
+ {<<"enacl">>,
+  {git,"https://github.com/aeternity/enacl.git",
+      {ref,"26180f42c0b3a450905d2efd8bc7fd5fd9cece75"}},
+  0}].
