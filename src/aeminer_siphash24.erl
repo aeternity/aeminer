@@ -28,10 +28,10 @@
 %%%=============================================================================
 
 -spec create_keys(binary()) ->
-          {aeu_siphash24:siphash_key(),
-           aeu_siphash24:siphash_key(),
-           aeu_siphash24:siphash_key(),
-           aeu_siphash24:siphash_key()}.
+          {aeminer_siphash24:siphash_key(),
+           aeminer_siphash24:siphash_key(),
+           aeminer_siphash24:siphash_key(),
+           aeminer_siphash24:siphash_key()}.
 create_keys(Header) ->
     AuxHash = <<_:32/binary>> = aeminer_blake2b_256:hash(Header),
     <<K0:64/little-unsigned,

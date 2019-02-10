@@ -15,82 +15,138 @@
 %%%-------------------------------------------------------------------
 -module(aeminer_pow_cuckoo).
 
--behaviour(aeminer_pow).
+-export([config/7,
+         addressed_instances/1,
+         repeats/1,
+         exec/1,
+         extra_args/1,
+         hex_enc_header/1,
+         get_node_size/1
+        ]).
 
+-export([generate/5,
+         verify/5
+        ]).
 
--export([check_env/0,
-         generate/5,
-         get_addressed_instances/1,
-         get_miner_configs/0,
-         get_repeats/1,
-         verify/4]).
-
+-export_type([hashable/0,
+              exec/0,
+              exec_group/0,
+              extra_args/0,
+              hex_enc_header/0,
+              repeats/0,
+              edge_bits/0,
+              solution/0,
+              config/0
+             ]).
 
 -ifdef(TEST).
--compile([export_all, nowarn_export_all]).
--include_lib("eunit/include/eunit.hrl").
+-export([verify_proof_/3,
+         solution_to_binary/2
+        ]).
 -endif.
+
 -include("aeminer.hrl").
 
--define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
--define(info(F, A),  epoch_pow_cuckoo:info(F, A)).
--define(warning(F, A), epoch_pow_cuckoo:warning(F, A)).
--define(error(F, A), epoch_pow_cuckoo:error(F, A)).
+-type hashable()          :: aeminer_blake2b_256:hashable().
 
--type os_pid() :: integer() | undefined.
--type pow_cuckoo_solution() :: [integer()].
+-type nonce()             :: aeminer_pow:nonce().
 
--record(state, {os_pid :: os_pid(),
-                port :: port() | undefined,
-                buffer = [] :: string(),
-                target :: aeminer_pow:sci_int() | undefined,
-                parser :: output_parser_fun()}).
+-type sci_target()        :: aeminer_pow:sci_target().
 
--type output_parser_fun() :: fun((list(string()), #state{}) ->
-                                        {'ok', term(), term()} | {'error', term()}).
+-type instance()          :: aeminer_pow:instance()
+                           | undefined.
 
--define(DEFAULT_EXECUTABLE_GROUP   , <<"aemineruckoo">>).
--define(DEFAULT_EXTRA_ARGS         , <<>>).
--define(DEFAULT_HEX_ENCODED_HEADER , false).
--define(DEFAULT_REPEATS            , 1).
--define(DEFAULT_EDGE_BITS          , 29).
--define(DEFAULT_CUCKOO_ENV,
-        {?DEFAULT_EDGE_BITS,
-         [{<<"mean29-generic">>, ?DEFAULT_EXTRA_ARGS, ?DEFAULT_HEX_ENCODED_HEADER,
-           ?DEFAULT_REPEATS, undefined, ?DEFAULT_EXECUTABLE_GROUP}]}).
+-type exec()              :: string().
 
--record(miner_config,
-        {executable         :: list(),
-         executable_group   :: binary(),
-         extra_args         :: list(),
-         hex_encoded_header :: boolean(),
-         repeats            :: non_neg_integer(),
-         instances          :: list(aeminer_pow:miner_instance()) | 'undefined'}).
--type miner_config() :: #miner_config{}.
--export_type([miner_config/0]).
+-type exec_group()        :: binary().
+
+-type extra_args()        :: string().
+
+-type hex_enc_header()    :: boolean().
+
+-type repeats()           :: non_neg_integer().
+
+-type edge_bits()         :: pos_integer().
+
+-type instances()         :: [aeminer_pow:instance()]
+                           | undefined.
+
+-type solution()          :: [integer()].
+
+-type output_parser_fun() :: fun(([string()], state()) ->
+                                    {ok, term(), term()} | {error, term()}).
+
+-record(config, {
+          exec            :: exec(),
+          exec_group      :: exec_group(),
+          extra_args      :: extra_args(),
+          hex_enc_header  :: hex_enc_header(),
+          repeats         :: repeats(),
+          edge_bits       :: edge_bits(),
+          instances       :: instances()
+         }).
+
+-opaque config()          :: #config{}.
+
+-record(state, {
+          os_pid          :: integer() | undefined,
+          port            :: port() | undefined,
+          buffer = []     :: string(),
+          target          :: sci_target() | undefined,
+          edge_bits       :: edge_bits(),
+          parser          :: output_parser_fun()
+         }).
+
+-type state()             :: #state{}.
+
+-define(IS_CONFIG(Exec, ExecGroup, ExtraArgs, HexEncHdr, Repeats, EdgeBits, Instances),
+       is_binary(Exec) and is_binary(ExecGroup) and
+       is_binary(ExtraArgs) and is_boolean(HexEncHdr) and
+       (is_integer(Repeats) and (Repeats > 0)) and
+       (is_integer(EdgeBits) and (EdgeBits > 0)) and
+       (is_list(Instances) or (Instances =:= undefined))).
+
+-define(LOG_MODULE, application:get_env(aeminer, log_module)).
+
+-define(debug(F, A), lager:debug(F, A)).
+-define(info(F, A),  lager:info(F, A)).
+-define(warning(F, A), lager:warning(F, A)).
+-define(error(F, A), lager:error(F, A)).
 
 %%%=============================================================================
 %%% API
 %%%=============================================================================
 
-%%------------------------------------------------------------------------------
-%% Assert that configuration options 'mining > cuckoo > miners' and
-%% 'mining > cuckoo > edge_bits' are not used together with deprecated
-%% configuration property 'mining > cuckoo > miner'.
-%%------------------------------------------------------------------------------
-check_env() ->
-    case {aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miners">>]),
-          aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"edge_bits">>])} of
-        {undefined, undefined} -> ok;
-        {_, _} ->
-            case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>]) of
-                undefined -> ok;
-                _ ->
-                    lager:error("Config error: deprecated property 'mining > cuckoo > miner' cannot be used "
-                                "together with 'mining > cuckoo > miners' or 'mining > cuckoo > edge_bits'"),
-                    exit(cuckoo_config_validation_failed)
-            end
-    end.
+config(Exec, ExecGroup, ExtraArgs, HexEncHdr, Repeats, EdgeBits, Instances) when
+      ?IS_CONFIG(Exec, ExecGroup, ExtraArgs, HexEncHdr, Repeats, EdgeBits, Instances) ->
+    #config{
+       exec           = binary_to_list(Exec),
+       exec_group     = ExecGroup,
+       extra_args     = binary_to_list(ExtraArgs),
+       hex_enc_header = HexEncHdr,
+       repeats        = Repeats,
+       edge_bits      = EdgeBits,
+       instances      = Instances}.
+
+-spec addressed_instances(config()) -> instances().
+addressed_instances(#config{instances = Instances}) ->
+    Instances.
+
+-spec repeats(config()) -> repeats().
+repeats(#config{repeats = Repeats}) ->
+    Repeats.
+
+-spec exec(config()) -> exec().
+exec(#config{exec = Exec}) ->
+    Exec.
+
+-spec extra_args(config()) -> extra_args().
+extra_args(#config{extra_args = ExtraArgs}) ->
+    ExtraArgs.
+
+-spec hex_enc_header(config()) -> hex_enc_header().
+hex_enc_header(#config{hex_enc_header = HexEncHdr}) ->
+    HexEncHdr.
 
 %%------------------------------------------------------------------------------
 %% Proof of Work generation with default settings
@@ -109,204 +165,61 @@ check_env() ->
 %%
 %%  Very slow below 3 threads, not improving significantly above 5, let us take 5.
 %%------------------------------------------------------------------------------
-
--type hashable() :: binary().
-
--spec generate(Data :: hashable(), Target :: aeminer_pow:sci_int(),
-               Nonce :: aeminer_pow:nonce(), MinerConfig :: aeminer_pow:miner_config(),
-               MinerInstance :: aeminer_pow:miner_instance() | 'undefined') -> aeminer_pow:pow_result().
-generate(Data, Target, Nonce, MinerConfig, MinerInstance) when Nonce >= 0,
-                                                               Nonce =< ?MAX_NONCE ->
+-spec generate(hashable(), sci_target(), nonce(), config(), instance()) ->
+    {ok, {nonce(), solution()}} | {error, no_solution} | {error, {runtime, term()}}.
+generate(Data, Target, Nonce, Config, Instance) when
+      Nonce >= 0, Nonce =< ?MAX_NONCE ->
     %% Hash Data and convert the resulting binary to a base64 string for Cuckoo
     %% Since this hash is purely internal, we don't use api encoding
     Hash   = aeminer_blake2b_256:hash(Data),
     Hash64 = base64:encode_to_string(Hash),
     ?debug("Generating solution for data hash ~p and nonce ~p with target ~p.",
            [Hash, Nonce, Target]),
-    case generate_int(Hash64, Nonce, Target, MinerConfig, MinerInstance) of
+    case generate_int(Hash64, Nonce, Target, Config, Instance) of
         {ok, Nonce1, Soln} ->
             {ok, {Nonce1, Soln}};
         {error, no_value} ->
             ?debug("No cuckoo solution found", []),
             {error, no_solution};
-        {error, Reason} ->
-            %% Executable failed (segfault, not found, etc.): let miner decide
-            {error, {runtime, Reason}}
+        {error, Rsn} ->
+            %% Exec failed (segfault, not found, etc.): let miner decide
+            {error, {runtime, Rsn}}
     end.
 
 %%------------------------------------------------------------------------------
 %% Proof of Work verification (with difficulty check)
 %%------------------------------------------------------------------------------
--spec verify(Data :: hashable(), Nonce :: aeminer_pow:nonce(),
-             Evd :: aeminer_pow:pow_evidence(), Target :: aeminer_pow:sci_int()) ->
-                    boolean().
-verify(Data, Nonce, Evd, Target) when is_list(Evd),
-                                      Nonce >= 0, Nonce =< ?MAX_NONCE ->
+-spec verify(hashable(), nonce(), solution(), sci_target(), edge_bits()) ->
+    boolean().
+verify(Data, Nonce, Soln, Target, EdgeBits) when
+      is_list(Soln), Nonce >= 0, Nonce =< ?MAX_NONCE ->
     Hash = aeminer_blake2b_256:hash(Data),
-    case test_target(Evd, Target) of
+    case test_target(Soln, Target, EdgeBits) of
         true ->
-            verify_proof(Hash, Nonce, Evd);
+            verify_proof(Hash, Nonce, Soln, EdgeBits);
         false ->
             false
     end.
 
-%%------------------------------------------------------------------------------
-%% Read and parse miner configs.
-%%
-%% Miners defined in epoch.{json,yaml} user config file take precedence.
-%% If there are no miners defined in the user config, sys.config cuckoo
-%% miners are read. If there are neither user config nor sys.config miners
-%% ?DEFAULT_CUCKOO_ENV is used as the last resort option (i.e. mean29-generic
-%% without any extra args).
-%%------------------------------------------------------------------------------
--spec get_miner_configs() -> list(miner_config()).
-get_miner_configs() ->
-    case get_miners_from_user_config() of
-        {ok, MinerConfigs} -> MinerConfigs;
-        undefined ->
-            case get_miners_from_deprecated_user_config() of
-                {ok, MinerConfigs} -> MinerConfigs;
-                undefined          -> get_miners_from_sys_config()
-            end
-    end.
+%% Internal functions.
 
--spec get_addressed_instances(miner_config()) -> list(non_neg_integer()) | undefined.
-get_addressed_instances(#miner_config{instances = Instances}) ->
-    Instances.
+generate_int(Hash, Nonce, Target,
+             #config{exec = Exec, extra_args = ExtraArgs0,
+                     hex_enc_header = HexEncHdr} = Config, Instance) ->
+    ExtraArgs   = case is_miner_instance_addressation_enabled(Config) of
+                      true  -> ExtraArgs0 ++ " -d " ++ integer_to_list(Instance);
+                      false -> ExtraArgs0
+                  end,
+    EncodedHash = case HexEncHdr of
+                      true  -> hex_string(Hash);
+                      false -> Hash
+                  end,
+    ExecBinDir  = exec_bin_dir(Config),
+    generate_int(EncodedHash, Nonce, Target, ExecBinDir, Exec, ExtraArgs, Config).
 
--spec get_repeats(miner_config()) -> non_neg_integer().
-get_repeats(#miner_config{repeats = Repeats}) ->
-    Repeats.
-
-%%%=============================================================================
-%%% Internal functions
-%%%=============================================================================
-
-%%------------------------------------------------------------------------------
-%% Config handling
-%%------------------------------------------------------------------------------
-
-get_options() ->
-    {_, _} = aeu_env:get_env(aeminerore, aeminer_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
-
-get_miners_from_user_config() ->
-    case aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miners">>]) of
-        {ok, MinerConfigMaps} ->
-            MinerConfigs =
-                lists:foldl(
-                  fun(ConfigMap, Configs) ->
-                          [build_miner_config(ConfigMap) | Configs]
-                  end, [], MinerConfigMaps),
-            {ok, MinerConfigs};
-        undefined -> undefined
-    end.
-
-get_miners_from_deprecated_user_config() ->
-    case aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miner">>]) of
-        {ok, MinerConfigMap} ->
-            %% In the deprecated config 'mining > cuckoo > miner'
-            %% 'instances' is the property indicating the number of instances to be addressed.
-            %% Addressed instances list has to be generated accordingly (indexed from 0).
-            case maps:get(<<"instances">>, MinerConfigMap, undefined) of
-                undefined ->
-                    MinerConfigs = [build_miner_config(MinerConfigMap)],
-                    {ok, MinerConfigs};
-                InstancesCount ->
-                    AddressedInstances = lists:seq(0, InstancesCount - 1),
-                    MinerConfigMap1    = MinerConfigMap#{<<"addressed_instances">> => AddressedInstances},
-                    MinerConfigs       = [build_miner_config(MinerConfigMap1)],
-                    {ok, MinerConfigs}
-            end;
-        undefined -> undefined
-    end.
-
-get_miners_from_sys_config() ->
-    {_, MinerConfigLists} = get_options(),
-    lists:foldl(
-      fun({_, _, _, _, _, _} = Config, Configs) ->
-              [build_miner_config(Config) | Configs]
-      end, [], MinerConfigLists).
-
-build_miner_config(Config) when is_map(Config) ->
-    Executable      = maps:get(<<"executable">>         , Config),
-    ExecutableGroup = maps:get(<<"executable_group">>   , Config, ?DEFAULT_EXECUTABLE_GROUP),
-    ExtraArgs       = maps:get(<<"extra_args">>         , Config, ?DEFAULT_EXTRA_ARGS),
-    HexEncodedHdr   = maps:get(<<"hex_encoded_header">> , Config, ?DEFAULT_HEX_ENCODED_HEADER),
-    Repeats         = maps:get(<<"repeats">>            , Config, ?DEFAULT_REPEATS),
-    Instances       = maps:get(<<"addressed_instances">>, Config, undefined),
-    #miner_config{
-       executable         = binary_to_list(Executable),
-       executable_group   = ExecutableGroup,
-       extra_args         = binary_to_list(ExtraArgs),
-       hex_encoded_header = HexEncodedHdr,
-       repeats            = Repeats,
-       instances          = Instances};
-build_miner_config({Executable, ExtraArgs, HexEncodedHeader, Repeats, Instances, ExecutableGroup}) ->
-    #miner_config{
-       executable         = binary_to_list(Executable),
-       executable_group   = ExecutableGroup,
-       extra_args         = binary_to_list(ExtraArgs),
-       hex_encoded_header = HexEncodedHeader,
-       repeats            = Repeats,
-       instances          = Instances}.
-
-get_edge_bits() ->
-    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"edge_bits">>]) of
-        {ok, EdgeBits} -> EdgeBits;
-        undefined ->
-            %% Deprecated property 'mining' > 'cuckoo' > 'miner' > 'edge_bits'
-            case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"edge_bits">>]) of
-                {ok, EdgeBits} -> EdgeBits;
-                undefined ->
-                    {EdgeBits, _} = get_options(),
-                    EdgeBits
-            end
-    end.
-
-get_executable(#miner_config{executable = Executable}) ->
-    Executable.
-
-get_extra_args(#miner_config{extra_args = ExtraArgs}) ->
-    ExtraArgs.
-
-is_hex_encoded_header(#miner_config{hex_encoded_header = HexEncodedHeader}) ->
-    HexEncodedHeader.
-
-is_miner_instance_addressation_enabled(#miner_config{instances = Instances}) ->
-    case Instances of
-        undefined -> false;
-        I when is_list(I) -> true
-    end.
-
-miner_bin_dir(#miner_config{executable_group = ExecutableGroup}) ->
-    case ExecutableGroup of
-        <<"aemineruckoo">>         -> aemineruckoo:bin_dir();
-        <<"aemineruckooprebuilt">> -> code:priv_dir(aemineruckooprebuilt)
-    end.
-
-%%------------------------------------------------------------------------------
-%% Proof of Work generation: use the hash provided
-%%------------------------------------------------------------------------------
--spec generate_int(Hash :: string(), Nonce :: aeminer_pow:nonce(),
-                   Target :: aeminer_pow:sci_int(), aeminer_pow:miner_config(), Instance :: non_neg_integer()) ->
-                          {'ok', Nonce2 :: aeminer_pow:nonce(), Solution :: pow_cuckoo_solution()} |
-                          {'error', term()}.
-generate_int(Hash, Nonce, Target, #miner_config{} = Config, Instance) ->
-    MinerBin        = get_executable(Config),
-    MinerExtraArgs0 = get_extra_args(Config),
-    MinerExtraArgs  = case is_miner_instance_addressation_enabled(Config) of
-                          true  -> MinerExtraArgs0 ++ " -d " ++ integer_to_list(Instance);
-                          false -> MinerExtraArgs0
-                      end,
-    EncodedHash     = case is_hex_encoded_header(Config) of
-                          true  -> hex_string(Hash);
-                          false -> Hash
-                      end,
-    MinerBinDir     = miner_bin_dir(Config),
-    generate_int(EncodedHash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config).
-
-generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config) ->
-    Repeats = integer_to_list(get_repeats(Config)),
+generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs,
+             #config{repeats = Repeats0, edge_bits = EdgeBits}) ->
+    Repeats = integer_to_list(Repeats0),
     Args = ["-h", Hash, "-n", integer_to_list(Nonce), "-r", Repeats | string:tokens(MinerExtraArgs, " ")],
     ?info("Executing cmd '~s ~s'", [MinerBin, lists:concat(lists:join(" ", Args))]),
     Old = process_flag(trap_exit, true),
@@ -315,10 +228,11 @@ generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config)
             wait_for_result(#state{os_pid = OsPid,
                                    port = Port,
                                    buffer = [],
-                                   parser = fun parse_generation_result/2,
-                                   target = Target});
-        {error, _} = E ->
-            E
+                                   target = Target,
+                                   edge_bits = EdgeBits,
+                                   parser = fun parse_generation_result/2});
+        {error, _Rsn} = Err ->
+            Err
     catch
         C:E ->
             {error, {unknown, {C, E}}}
@@ -330,29 +244,35 @@ generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config)
         end
     end.
 
--spec hex_string(string()) -> string().
 hex_string(S) ->
     Bin = list_to_binary(S),
     lists:flatten([io_lib:format("~2.16.0B", [B]) || <<B:8>> <= Bin]).
 
--define(POW_OK, ok).
+is_miner_instance_addressation_enabled(#config{instances = Instances}) ->
+    case Instances of
+        I when is_list(I) -> true;
+        undefined         -> false
+    end.
+
+exec_bin_dir(#config{exec_group = ExecGroup}) ->
+    case ExecGroup of
+        <<"aecuckoo">>         -> aecuckoo:bin_dir();
+        <<"aecuckooprebuilt">> -> code:priv_dir(aecuckooprebuilt)
+    end.
+
 -define(POW_TOO_BIG(Nonce), {error, {nonce_too_big, Nonce}}).
 -define(POW_TOO_SMALL(Nonce, PrevNonce), {error, {nonces_not_ascending, Nonce, PrevNonce}}).
 -define(POW_NON_MATCHING, {error, endpoints_do_not_match_up}).
 -define(POW_BRANCH, {error, branch_in_cycle}).
 -define(POW_DEAD_END, {error, cycle_dead_ends}).
 -define(POW_SHORT_CYCLE, {error, cycle_too_short}).
--define(PROOFSIZE, 42).
+
 %%------------------------------------------------------------------------------
 %% @doc
 %%   Proof of Work verification (difficulty check should be done before calling
 %%   this function)
 %% @end
 %%------------------------------------------------------------------------------
--spec verify_proof(Hash :: binary(), Nonce :: aeminer_pow:nonce(),
-                   Solution :: aeminer_pow:pow_evidence()) -> boolean().
-verify_proof(Hash, Nonce, Solution) ->
-    verify_proof(Hash, Nonce, Solution, get_edge_bits()).
 
 verify_proof(Hash, Nonce, Solution, EdgeBits) ->
     %% Cuckoo has an 80 byte header, we have to use that as well
@@ -392,8 +312,8 @@ verify_proof_(Header, Solution, EdgeBits) ->
                 throw(?POW_NON_MATCHING)
         end
     catch
-        throw:{error, Reason} ->
-            ?info("Proof verification failed for ~p: ~p", [Solution, Reason]),
+        throw:{error, Rsn} ->
+            ?info("Proof verification failed for ~p: ~p", [Solution, Rsn]),
             false
     end.
 
@@ -409,8 +329,8 @@ check_cycle(Nodes0) ->
     UOdds  = lists:usort(Odds),
     %% Check that all nodes appear exactly twice (i.e. each node has
     %% exactly two edges).
-    case length(UEvens) == (?PROOFSIZE div 2) andalso
-         length(UOdds) == (?PROOFSIZE div 2) andalso
+    case length(UEvens) == (?SOLUTION_SIZE div 2) andalso
+         length(UOdds) == (?SOLUTION_SIZE div 2) andalso
          UOdds == Odds -- UOdds andalso UEvens == Evens -- UEvens of
         false ->
             {error, ?POW_BRANCH};
@@ -484,11 +404,7 @@ pack_header_and_nonce(Hash, Nonce) when byte_size(Hash) == 32 ->
 %%   for the last line fragment w/o NL.
 %% @end
 %%------------------------------------------------------------------------------
--spec wait_for_result(#state{}) ->
-    {'ok', aeminer_pow:nonce(), pow_cuckoo_solution()} | {'error', term()}.
-wait_for_result(#state{os_pid = OsPid,
-                       port = Port,
-                       buffer = Buffer} = State) ->
+wait_for_result(#state{os_pid = OsPid, port = Port, buffer = Buffer} = State) ->
     receive
         {Port, {data, Msg}} ->
             Str = binary_to_list(Msg),
@@ -514,7 +430,6 @@ wait_for_result(#state{os_pid = OsPid,
 %%   end of Str.
 %% @end
 %%------------------------------------------------------------------------------
--spec handle_fragmented_lines(string(), string()) -> {list(string()), string()}.
 handle_fragmented_lines(Str, Buffer) ->
     Lines = string:tokens(Str, "\n"),
 
@@ -542,16 +457,13 @@ handle_fragmented_lines(Str, Buffer) ->
 %%   Parse miner output
 %% @end
 %%------------------------------------------------------------------------------
--spec parse_generation_result(list(string()), #state{}) ->
-            {'ok', Nonce :: aeminer_pow:nonce(), Solution :: pow_cuckoo_solution()} |
-            {'error', term()}.
 parse_generation_result([], State) ->
     wait_for_result(State);
-parse_generation_result(["Solution" ++ NonceValuesStr | Rest], #state{os_pid = OsPid,
-                                                                 target = Target} = State) ->
+parse_generation_result(["Solution" ++ NonceValuesStr | Rest],
+                        #state{os_pid = OsPid, edge_bits = EdgeBits, target = Target} = State) ->
     [NonceStr | SolStrs] =  string:tokens(NonceValuesStr, " "),
     Soln = [list_to_integer(string:trim(V, both, [$\r]), 16) || V <- SolStrs],
-    case {length(Soln), test_target(Soln, Target)} of
+    case {length(Soln), test_target(Soln, Target, EdgeBits)} of
         {42, true} ->
             stop_execution(OsPid),
             case parse_nonce_str(NonceStr) of
@@ -563,8 +475,8 @@ parse_generation_result(["Solution" ++ NonceValuesStr | Rest], #state{os_pid = O
                     Err
             end;
         {N, _} when N /= 42 ->
-            %% No nonce in solution, old miner executable?
             ?debug("Solution has wrong length (~p) should be 42", [N]),
+            %% No nonce in solution, old miner exec?
             stop_execution(OsPid),
             {error, bad_miner};
         {_, false} ->
@@ -585,7 +497,6 @@ parse_nonce_str(S) ->
 %%   Stop the OS process
 %% @end
 %%------------------------------------------------------------------------------
--spec stop_execution(os_pid()) -> ok.
 stop_execution(OsPid) ->
     exec_kill(OsPid),
     ?debug("Mining OS process ~p stopped", [OsPid]),
@@ -597,24 +508,16 @@ stop_execution(OsPid) ->
 %%   greater than 33 (when it needs u64 to store). Hash result for difficulty
 %%   control accordingly.
 %% @end
-%%------------------------------------------------------------------------------
--spec get_node_size() -> non_neg_integer().
-get_node_size() ->
-    node_size(get_edge_bits()).
-
 %% Refs:
 %% * https://github.com/tromp/cuckoo/blob/488c03f5dbbfdac6d2d3a7e1d0746c9a7dafc48f/src/Makefile#L214-L215
 %% * https://github.com/tromp/cuckoo/blob/488c03f5dbbfdac6d2d3a7e1d0746c9a7dafc48f/src/cuckoo.h#L26-L30
--spec node_size(non_neg_integer()) -> non_neg_integer().
-node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits > 31 -> 8;
-node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits >  0 -> 4.
+%%------------------------------------------------------------------------------
+-spec get_node_size(pos_integer()) -> non_neg_integer().
+get_node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits > 31 -> 8;
+get_node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits > 0 -> 4.
 
--spec exec_run(string(), string(), list(string())) ->
-    {ok, Port :: port(), OsPid :: os_pid()} |
-    {error, {port_error, {term(), term()}}}.
 exec_run(Cmd, Dir, Args) ->
-    PortSettings = [
-                    binary,
+    PortSettings = [binary,
                     exit_status,
                     hide,
                     in,
@@ -639,7 +542,6 @@ exec_run(Cmd, Dir, Args) ->
             {error, {port_error, {C, E}}}
     end.
 
--spec exec_kill(os_pid()) -> ok.
 exec_kill(undefined) ->
     ok;
 exec_kill(OsPid) ->
@@ -652,7 +554,6 @@ exec_kill(OsPid) ->
             ok
     end.
 
--spec is_unix() -> boolean().
 is_unix() ->
     case erlang:system_info(system_architecture) of
         "win32" ->
@@ -666,13 +567,11 @@ is_unix() ->
 %% hash-based target is suggested: the sha256 hash of the cycle nonces
 %% is restricted to be under the target value (0 < target < 2^256).
 %%------------------------------------------------------------------------------
--spec test_target(Soln :: pow_cuckoo_solution(), Target :: aeminer_pow:sci_int()) ->
-                             boolean().
-test_target(Soln, Target) ->
-    test_target(Soln, Target, get_node_size()).
+test_target(Soln, Target, EdgeBits) ->
+    test_target1(Soln, Target, get_node_size(EdgeBits)).
 
-test_target(Soln, Target, NodeSize) ->
-    Bin = solution_to_binary(lists:sort(Soln), NodeSize * 8, <<>>),
+test_target1(Soln, Target, NodeSize) ->
+    Bin = solution_to_binary(lists:sort(Soln), NodeSize * 8),
     Hash = aeminer_blake2b_256:hash(Bin),
     aeminer_pow:test_target(Hash, Target).
 
@@ -680,8 +579,9 @@ test_target(Soln, Target, NodeSize) ->
 %% Convert solution (a list of 42 numbers) to a binary
 %% in a languauge-independent way
 %%------------------------------------------------------------------------------
--spec solution_to_binary(Soln :: pow_cuckoo_solution(), Bits :: integer(),
-                         Acc :: binary()) -> binary().
+solution_to_binary(Soln, Bits) ->
+    solution_to_binary(Soln, Bits, <<>>).
+
 solution_to_binary([], _Bits, Acc) ->
     Acc;
 solution_to_binary([H | T], Bits, Acc) ->

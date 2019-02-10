@@ -1,6 +1,6 @@
 REBAR = ./rebar3
 
-.PHONY: all dialyzer test clean console
+.PHONY: all dialyzer ct eunit clean distclean console
 
 all:
 	$(REBAR) compile
@@ -12,7 +12,10 @@ dialyzer:
 	$(REBAR) dialyzer
 
 ct: all
-	$(REBAR) ct test/aecuckoo_SUITE
+	$(REBAR) ct --suite=test/aecuckoo_SUITE
+
+eunit:
+	$(REBAR) eunit --module=aeminer_pow_tests,aeminer_pow_cuckoo_tests
 
 clean:
 	$(REBAR) clean
@@ -23,3 +26,4 @@ distclean: clean
 
 console:
 	$(REBAR) shell
+

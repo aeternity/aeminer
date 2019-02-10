@@ -14,19 +14,34 @@
          test_target/2,
          trim_nonce/2]).
 
--ifdef(TEST).
--compile([export_all, nowarn_export_all]).
--endif.
+-export_type([nonce/0,
+              int_target/0,
+              sci_target/0,
+              bin_target/0,
+              difficulty/0,
+              instance/0
+             ]).
 
--include_lib("aeminer/include/aeminer.hrl").
+-include("aeminer.hrl").
+
+-type nonce()      :: 0..?MAX_NONCE.
+
+-type int_target() :: integer().
+
+-type sci_target() :: integer().
+
+-type bin_target() :: <<_:256>>.
+
+%% Difficulty: max threshold (0x00000000FFFF0000000000000000000000000000000000000000000000000000)
+%% over the actual one. Always positive.
+-type difficulty() :: integer().
+
+-type instance()   :: non_neg_integer().
+
+-type config()     :: aeminer_pow_cuckoo:config().
 
 %% 10^24, approx. 2^80
 -define(NONCE_RANGE, 1000000000000000000000000).
--define(POW_MODULE, aeminer_pow_cuckoo).
-
-%% 0..?MAX_NONCE
--type nonce() :: 0..16#ffffffffffffffff.
--export_type([nonce/0]).
 
 %%------------------------------------------------------------------------------
 %%                      Target threshold and difficulty
@@ -64,46 +79,12 @@
 %%   significand (i.e., the int value is 0.<significand> * 8^<exponent>).
 %%   https://en.bitcoin.it/wiki/Difficulty#How_is_difficulty_stored_in_blocks.3F)
 %%------------------------------------------------------------------------------
--type sci_int() :: integer().
-
-%% Optional evidence for PoW verification
--type pow_evidence() :: 'no_value' | term().
--type pow_result() :: {'ok', {Nonce :: nonce(), Solution :: pow_evidence()}} |
-                      {error, no_solution | {runtime, term()}}.
-%% Difficulty: max threshold (0x00000000FFFF0000000000000000000000000000000000000000000000000000)
-%% over the actual one. Always positive.
--type difficulty() :: integer().
-
--type miner_config()   :: aeminer_pow_cuckoo:miner_config().
--type miner_instance() :: non_neg_integer().
-
--export_type([sci_int/0,
-              difficulty/0,
-              pow_evidence/0,
-              pow_result/0,
-              miner_instance/0,
-              miner_config/0]).
-
-%%%=============================================================================
-%%% Behaviour
-%%%=============================================================================
-
--type hashable() :: binary().
-
--callback generate(Data :: hashable(), Target :: aeminer_pow:sci_int(),
-                   Nonce :: aeminer_pow:nonce(), MinerConfig :: aeminer_pow:miner_config(),
-                   MinerInstance :: aeminer_pow:miner_instance()) ->
-    aeminer_pow:pow_result().
-
--callback verify(Data :: hashable(), Nonce :: aeminer_pow:nonce(),
-                 Evd :: aeminer_pow:pow_evidence(), Target :: aeminer_pow:sci_int()) ->
-    boolean().
 
 %%%=============================================================================
 %%% API
 %%%=============================================================================
 
--spec scientific_to_integer(sci_int()) -> integer().
+-spec scientific_to_integer(sci_target()) -> int_target().
 scientific_to_integer(S) ->
     {Exp, Significand} = break_up_scientific(S),
     E3 = Exp - 3,
@@ -114,7 +95,7 @@ scientific_to_integer(S) ->
             Significand bsr (-8 * E3)
     end.
 
--spec integer_to_scientific(integer()) -> sci_int().
+-spec integer_to_scientific(int_target()) -> sci_target().
 integer_to_scientific(I) ->
     %% Find exponent and significand
     {Exp, Significand} = integer_to_scientific(I, 3),
@@ -129,22 +110,22 @@ integer_to_scientific(I) ->
 
 %% We want difficulty to be an integer, to still have enough precision using
 %% integer division we multiply by K (1 bsl 24).
--spec target_to_difficulty(sci_int()) -> integer().
+-spec target_to_difficulty(sci_target()) -> difficulty().
 target_to_difficulty(SciTgt) ->
     (?DIFFICULTY_INTEGER_FACTOR * ?HIGHEST_TARGET_INT)
         div scientific_to_integer(SciTgt).
 
--spec next_nonce(aeminer_pow:nonce(), aeminer_pow:miner_config()) -> aeminer_pow:nonce().
+-spec next_nonce(nonce(), config()) -> nonce().
 next_nonce(Nonce, Cfg) ->
-    Nonce + aeminer_pow_cuckoo:get_repeats(Cfg).
+    Nonce + aeminer_pow_cuckoo:repeats(Cfg).
 
--spec pick_nonce() -> aeminer_pow:nonce().
+-spec pick_nonce() -> nonce().
 pick_nonce() ->
     rand:uniform(?NONCE_RANGE) band ?MAX_NONCE.
 
--spec trim_nonce(aeminer_pow:nonce(), aeminer_pow:miner_config()) -> aeminer_pow:nonce().
+-spec trim_nonce(nonce(), config()) -> nonce().
 trim_nonce(Nonce, Cfg) ->
-    case Nonce + aeminer_pow_cuckoo:get_repeats(Cfg) < ?MAX_NONCE of
+    case Nonce + aeminer_pow_cuckoo:repeats(Cfg) < ?MAX_NONCE of
         true  -> Nonce;
         false -> 0
     end.
@@ -152,11 +133,17 @@ trim_nonce(Nonce, Cfg) ->
 %%------------------------------------------------------------------------------
 %% Test if binary is under the target threshold
 %%------------------------------------------------------------------------------
--spec test_target(binary(), sci_int()) -> boolean().
+-spec test_target(bin_target(), sci_target()) -> boolean().
 test_target(Bin, Target) ->
     Threshold = scientific_to_integer(Target),
     <<Val:32/big-unsigned-integer-unit:8>> = Bin,
     Val < Threshold.
+
+%% TODO: get target
+%Bin = solution_to_binary(lists:sort(Soln), NodeSize * 8, <<>>),
+%%Hash = aec_hash:hash(pow, Bin),
+%%<<Val:32/big-unsigned-integer-unit:8>> = Hash,
+%%Val
 
 %%%=============================================================================
 %%% Internal functions
@@ -170,7 +157,7 @@ integer_to_scientific(I, Exp) ->
     %% Add the number of bytes in the significand
     {Exp, I}.
 
-%% Return the exponent and significand of a sci_int().
+%% Return the exponent and significand of a sci_target().
 break_up_scientific(S) ->
     SigMask = (1 bsl 24) - 1,
     Exp = ((S bxor SigMask) bsr 24),
@@ -183,8 +170,3 @@ break_up_scientific(S) ->
             {-Exp, Significand - 16#800000}
     end.
 
-%% ------------ GET TARGET ------------
-%%Bin = solution_to_binary(lists:sort(Soln), NodeSize * 8, <<>>),
-%%Hash = aec_hash:hash(pow, Bin),
-%%<<Val:32/big-unsigned-integer-unit:8>> = Hash,
-%%Val

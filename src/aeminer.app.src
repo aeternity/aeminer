@@ -1,10 +1,14 @@
 {application, aeminer,
- [{description, "Aeternity cuckoo miner"},
+ [{description, "Aeternity miner"},
   {vsn, "1.0.0"},
   {registered, []},
   {applications,
    [kernel,
-    stdlib
+    stdlib,
+    lager,
+    enacl,
+    aecuckoo,
+    aecuckooprebuilt
    ]},
   {env,[]},
   {modules, []},
