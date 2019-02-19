@@ -106,12 +106,12 @@
        (is_integer(EdgeBits) and (EdgeBits > 0)) and
        (is_list(Instances) or (Instances =:= undefined))).
 
--define(LOG_MODULE, application:get_env(aeminer, log_module)).
+-define(LOG_SINK, (application:get_env(aeminer, lager_log_sink, lager))).
 
--define(debug(F, A), lager:debug(F, A)).
--define(info(F, A),  lager:info(F, A)).
--define(warning(F, A), lager:warning(F, A)).
--define(error(F, A), lager:error(F, A)).
+-define(debug(F, A), ?LOG_SINK:debug(F, A)).
+-define(info(F, A),  ?LOG_SINK:info(F, A)).
+-define(warning(F, A), ?LOG_SINK:warning(F, A)).
+-define(error(F, A), ?LOG_SINK:error(F, A)).
 
 %%%=============================================================================
 %%% API
