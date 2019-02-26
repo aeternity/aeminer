@@ -40,9 +40,6 @@
 
 -type config()     :: aeminer_pow_cuckoo:config().
 
-%% 10^24, approx. 2^80
--define(NONCE_RANGE, 1000000000000000000000000).
-
 %%------------------------------------------------------------------------------
 %%                      Target threshold and difficulty
 %%
@@ -121,7 +118,7 @@ next_nonce(Nonce, Cfg) ->
 
 -spec pick_nonce() -> nonce().
 pick_nonce() ->
-    rand:uniform(?NONCE_RANGE) band ?MAX_NONCE.
+    rand:uniform(?MAX_NONCE + 1) - 1.
 
 -spec trim_nonce(nonce(), config()) -> nonce().
 trim_nonce(Nonce, Cfg) ->
