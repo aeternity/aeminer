@@ -5,7 +5,13 @@
 
 -define(DIFFICULTY_INTEGER_FACTOR, 16#1000000).
 
+-define(MIN_NONCE, 0).
 -define(MAX_NONCE, 16#ffffffffffffffff).
 
+-define(NONCE_NBYTES, 8).
+
 -define(SOLUTION_SIZE, 42).
+
+-define(MIN_SOLUTION_NUMBER, 0).
+-define(MAX_SOLUTION_NUMBER, 16#ffffffff).
 
