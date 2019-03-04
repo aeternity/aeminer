@@ -34,6 +34,8 @@
               extra_args/0,
               hex_enc_header/0,
               repeats/0,
+              instance/0,
+              instances/0,
               edge_bits/0,
               solution/0,
               config/0
