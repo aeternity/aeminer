@@ -11,6 +11,7 @@
 -include("aeminer.hrl").
 
 -define(TEST_MODULE, aeminer_pow_cuckoo).
+-define(POW_MODULE, aeminer_pow).
 
 -define(TEST_BIN, <<"wsffgujnjkqhduihsahswgdf">>).
 -define(TEST_HIGH_NONCE, 38). %% Nonce with solution with high target.
@@ -29,14 +30,18 @@ pow_test_() ->
                 ?assertMatch(L when length(L) == ?SOLUTION_SIZE, Soln),
 
                 %% verify the nonce and the solution
-                Res2 = ?TEST_MODULE:verify(?TEST_BIN, Nonce, Soln, Target, ?EDGE_BITS_15),
-                ?assert(Res2)
+                ?assert(?TEST_MODULE:verify(?TEST_BIN, Nonce, Soln, Target, ?EDGE_BITS_15)),
+                ?assert(?TEST_MODULE:verify_proof(?TEST_BIN, Nonce, Soln, ?EDGE_BITS_15)),
+
+                SolnTarget = ?TEST_MODULE:get_target(Soln, ?EDGE_BITS_15),
+                ?assert(SolnTarget =< ?HIGHEST_TARGET_INT)
         end}
       },
       {"Generate with a winning nonce but low target threshold, shall fail",
        {timeout, 90,
         fun() ->
                 Target = 16#01010000,
+                TargetInt = ?POW_MODULE:scientific_to_integer(Target),
                 Nonce = ?TEST_HIGH_NONCE,
                 Config = fast_and_deterministic_cuckoo_pow(),
                 Res1 = spawn_worker(fun() ->
@@ -56,7 +61,12 @@ pow_test_() ->
                 ?assertMatch(L when length(L) == ?SOLUTION_SIZE, Soln2),
                 %% ... then attempt to verify such solution (and
                 %% nonce) with the low target threshold (shall fail).
-                ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, Soln2, Target, ?EDGE_BITS_15))
+                ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, Soln2, Target, ?EDGE_BITS_15)),
+                %% The solution is still valid though.
+                ?assert(?TEST_MODULE:verify_proof(?TEST_BIN, Nonce, Soln2, ?EDGE_BITS_15)),
+
+                %% The target of the solution shall be higher than the low target.
+                ?assert(?TEST_MODULE:get_target(Soln2, ?EDGE_BITS_15) > TargetInt)
         end}
       },
       {"Attempt to verify wrong solution for nonce that has a solution shall fail",
@@ -71,7 +81,8 @@ pow_test_() ->
                WrongSoln = lists:seq(0, 41),
                ?assertMatch(L when length(L) == ?SOLUTION_SIZE, WrongSoln),
                ?assertNotEqual(Soln, WrongSoln),
-               ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, WrongSoln, Target, ?EDGE_BITS_15))
+               ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, WrongSoln, Target, ?EDGE_BITS_15)),
+               ?assertNot(?TEST_MODULE:verify_proof(?TEST_BIN, Nonce, WrongSoln, ?EDGE_BITS_15))
        end},
       {"Attempt to verify nonce that does not have a solution (providing a dummy solution) shall fail",
        fun() ->
@@ -82,8 +93,9 @@ pow_test_() ->
                spawn_worker(fun() -> ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined) end)),
 
                DummySoln = lists:seq(0, 41),
-               ?assertMatch(L when length(L) == ?SOLUTION_SIZE, DummySoln),
-               ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, DummySoln, Target, ?EDGE_BITS_15))
+               ?assertMatch(L when length(L) =:= ?SOLUTION_SIZE, DummySoln),
+               ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, DummySoln, Target, ?EDGE_BITS_15)),
+               ?assertNot(?TEST_MODULE:verify_proof(?TEST_BIN, Nonce, DummySoln, ?EDGE_BITS_15))
        end},
       {"Attempt to verify nonce that is too big shall fail gracefully",
        fun() ->
@@ -99,7 +111,8 @@ pow_test_() ->
                       117537386,120015599,125293300,125684682,129332159],
                Nonce = 17654096256755765485,
                Target = 536940240,
-               ?assertNot(?TEST_MODULE:verify(Hash, Nonce, Pow, Target, ?EDGE_BITS_15))
+               ?assertNot(?TEST_MODULE:verify(Hash, Nonce, Pow, Target, ?EDGE_BITS_15)),
+               ?assertNot(?TEST_MODULE:verify_proof(Hash, Nonce, Pow, ?EDGE_BITS_15))
        end}
      ].
 
