@@ -58,11 +58,11 @@
 -type instance()          :: aeminer_pow:instance()
                            | undefined.
 
--type exec()              :: string().
+-type exec()              :: binary().
 
 -type exec_group()        :: binary().
 
--type extra_args()        :: string().
+-type extra_args()        :: binary().
 
 -type hex_enc_header()    :: boolean().
 
@@ -120,9 +120,9 @@
 config(Exec, ExecGroup, ExtraArgs, HexEncHdr, Repeats, EdgeBits, Instances) when
       ?IS_CONFIG(Exec, ExecGroup, ExtraArgs, HexEncHdr, Repeats, EdgeBits, Instances) ->
     #config{
-       exec           = binary_to_list(Exec),
+       exec           = Exec,
        exec_group     = ExecGroup,
-       extra_args     = binary_to_list(ExtraArgs),
+       extra_args     = ExtraArgs,
        hex_enc_header = HexEncHdr,
        repeats        = Repeats,
        edge_bits      = EdgeBits,
@@ -204,17 +204,20 @@ verify(Data, Nonce, Soln, Target, EdgeBits) when
 %% Internal functions.
 
 generate_int(Hash, Nonce, Target,
-             #config{exec = Exec, extra_args = ExtraArgs0,
+             #config{exec = Exec0, extra_args = ExtraArgs0,
                      hex_enc_header = HexEncHdr} = Config, Instance) ->
-    ExtraArgs   = case is_miner_instance_addressation_enabled(Config) of
-                      true  -> ExtraArgs0 ++ " -d " ++ integer_to_list(Instance);
-                      false -> ExtraArgs0
-                  end,
-    EncodedHash = case HexEncHdr of
-                      true  -> hex_string(Hash);
-                      false -> Hash
-                  end,
+    ExtraArgs =
+        case is_miner_instance_addressation_enabled(Config) of
+            true  -> binary_to_list(ExtraArgs0) ++ " -d " ++ integer_to_list(Instance);
+            false -> binary_to_list(ExtraArgs0)
+        end,
+    EncodedHash =
+        case HexEncHdr of
+            true  -> hex_string(Hash);
+            false -> Hash
+        end,
     ExecBinDir  = exec_bin_dir(Config),
+    Exec = binary_to_list(Exec0),
     generate_int(EncodedHash, Nonce, Target, ExecBinDir, Exec, ExtraArgs, Config).
 
 generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs,
