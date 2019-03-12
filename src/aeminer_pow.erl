@@ -136,12 +136,6 @@ test_target(Bin, Target) ->
     <<Val:32/big-unsigned-integer-unit:8>> = Bin,
     Val < Threshold.
 
-%% TODO: get target
-%Bin = solution_to_binary(lists:sort(Soln), NodeSize * 8, <<>>),
-%%Hash = aec_hash:hash(pow, Bin),
-%%<<Val:32/big-unsigned-integer-unit:8>> = Hash,
-%%Val
-
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================

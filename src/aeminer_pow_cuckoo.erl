@@ -25,7 +25,9 @@
         ]).
 
 -export([generate/5,
-         verify/5
+         verify/5,
+         verify_proof/4,
+         get_target/2
         ]).
 
 -export_type([hashable/0,
@@ -52,6 +54,8 @@
 -type hashable()          :: aeminer_blake2b_256:hashable().
 
 -type nonce()             :: aeminer_pow:nonce().
+
+-type int_target()        :: aeminer_pow:int_target().
 
 -type sci_target()        :: aeminer_pow:sci_target().
 
@@ -193,13 +197,34 @@ generate(Data, Target, Nonce, Config, Instance) when
     boolean().
 verify(Data, Nonce, Soln, Target, EdgeBits) when
       is_list(Soln), Nonce >= 0, Nonce =< ?MAX_NONCE ->
-    Hash = aeminer_blake2b_256:hash(Data),
     case test_target(Soln, Target, EdgeBits) of
         true ->
-            verify_proof(Hash, Nonce, Soln, EdgeBits);
+            verify_proof(Data, Nonce, Soln, EdgeBits);
         false ->
             false
     end.
+
+%%------------------------------------------------------------------------------
+%% @doc
+%%   Proof of Work verification
+%% @end
+%%------------------------------------------------------------------------------
+-spec verify_proof(hashable(), nonce(), solution(), edge_bits()) -> boolean().
+verify_proof(Data, Nonce, Solution, EdgeBits) ->
+    %% Cuckoo has an 80 byte header, we have to use that as well
+    %% packed Hash + Nonce = 56 bytes, add 24 bytes of 0:s
+    Hash = aeminer_blake2b_256:hash(Data),
+    Header0 = pack_header_and_nonce(Hash, Nonce),
+    Header = <<(list_to_binary(Header0))/binary, 0:(8*24)>>,
+    verify_proof_(Header, Solution, EdgeBits).
+
+-spec get_target(solution(), edge_bits()) -> int_target().
+get_target(Soln, EdgeBits) when is_list(Soln), length(Soln) =:= ?SOLUTION_SIZE ->
+    NodeSize = get_node_size(EdgeBits),
+    Bin = solution_to_binary(lists:sort(Soln), NodeSize * 8, <<>>),
+    Hash = aeminer_blake2b_256:hash(Bin),
+    <<Val:32/big-unsigned-integer-unit:8>> = Hash,
+    Val.
 
 %% Internal functions.
 
@@ -269,20 +294,6 @@ exec_bin_dir(#config{exec_group = ExecGroup}) ->
 -define(POW_BRANCH, {error, branch_in_cycle}).
 -define(POW_DEAD_END, {error, cycle_dead_ends}).
 -define(POW_SHORT_CYCLE, {error, cycle_too_short}).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%%   Proof of Work verification (difficulty check should be done before calling
-%%   this function)
-%% @end
-%%------------------------------------------------------------------------------
-
-verify_proof(Hash, Nonce, Solution, EdgeBits) ->
-    %% Cuckoo has an 80 byte header, we have to use that as well
-    %% packed Hash + Nonce = 56 bytes, add 24 bytes of 0:s
-    Header0 = pack_header_and_nonce(Hash, Nonce),
-    Header = <<(list_to_binary(Header0))/binary, 0:(8*24)>>,
-    verify_proof_(Header, Solution, EdgeBits).
 
 verify_proof_(Header, Solution, EdgeBits) ->
     {K0, K1, K2, K3} = aeminer_siphash24:create_keys(Header),
