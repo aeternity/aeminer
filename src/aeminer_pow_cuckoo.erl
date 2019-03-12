@@ -464,7 +464,7 @@ parse_generation_result(["Solution" ++ NonceValuesStr | Rest],
     [NonceStr | SolStrs] =  string:tokens(NonceValuesStr, " "),
     Soln = [list_to_integer(string:trim(V, both, [$\r]), 16) || V <- SolStrs],
     case {length(Soln), test_target(Soln, Target, EdgeBits)} of
-        {42, true} ->
+        {?SOLUTION_SIZE, true} ->
             stop_execution(OsPid),
             case parse_nonce_str(NonceStr) of
                 {ok, Nonce} ->
@@ -474,8 +474,8 @@ parse_generation_result(["Solution" ++ NonceValuesStr | Rest],
                     ?debug("Bad nonce: ~p", [Err]),
                     Err
             end;
-        {N, _} when N /= 42 ->
-            ?debug("Solution has wrong length (~p) should be 42", [N]),
+        {N, _} when N /= ?SOLUTION_SIZE ->
+            ?debug("Solution has wrong length (~p) should be ~p", [N, ?SOLUTION_SIZE]),
             %% No nonce in solution, old miner exec?
             stop_execution(OsPid),
             {error, bad_miner};
