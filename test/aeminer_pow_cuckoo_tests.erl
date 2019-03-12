@@ -26,7 +26,7 @@ pow_test_() ->
                 Config = fast_and_deterministic_cuckoo_pow(),
                 Res = spawn_worker(fun() -> ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined) end),
                 {ok, {Nonce, Soln}} = Res,
-                ?assertMatch(L when length(L) == 42, Soln),
+                ?assertMatch(L when length(L) == ?SOLUTION_SIZE, Soln),
 
                 %% verify the nonce and the solution
                 Res2 = ?TEST_MODULE:verify(?TEST_BIN, Nonce, Soln, Target, ?EDGE_BITS_15),
@@ -53,7 +53,7 @@ pow_test_() ->
                                             ?TEST_MODULE:generate(?TEST_BIN, HighTarget, Nonce, Config, undefined)
                                     end),
                 {ok, {Nonce, Soln2}} = Res2,
-                ?assertMatch(L when length(L) == 42, Soln2),
+                ?assertMatch(L when length(L) == ?SOLUTION_SIZE, Soln2),
                 %% ... then attempt to verify such solution (and
                 %% nonce) with the low target threshold (shall fail).
                 ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, Soln2, Target, ?EDGE_BITS_15))
@@ -66,10 +66,10 @@ pow_test_() ->
                Config = fast_and_deterministic_cuckoo_pow(),
                Res = spawn_worker(fun() -> ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined) end),
                {ok, {Nonce, Soln}} = Res,
-               ?assertMatch(L when length(L) == 42, Soln),
+               ?assertMatch(L when length(L) == ?SOLUTION_SIZE, Soln),
 
                WrongSoln = lists:seq(0, 41),
-               ?assertMatch(L when length(L) == 42, WrongSoln),
+               ?assertMatch(L when length(L) == ?SOLUTION_SIZE, WrongSoln),
                ?assertNotEqual(Soln, WrongSoln),
                ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, WrongSoln, Target, ?EDGE_BITS_15))
        end},
@@ -82,7 +82,7 @@ pow_test_() ->
                spawn_worker(fun() -> ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined) end)),
 
                DummySoln = lists:seq(0, 41),
-               ?assertMatch(L when length(L) == 42, DummySoln),
+               ?assertMatch(L when length(L) == ?SOLUTION_SIZE, DummySoln),
                ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, DummySoln, Target, ?EDGE_BITS_15))
        end},
       {"Attempt to verify nonce that is too big shall fail gracefully",

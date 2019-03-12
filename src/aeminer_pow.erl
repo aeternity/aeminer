@@ -24,7 +24,7 @@
 
 -include("aeminer.hrl").
 
--type nonce()      :: 0..?MAX_NONCE.
+-type nonce()      :: ?MIN_NONCE..?MAX_NONCE.
 
 -type int_target() :: integer().
 

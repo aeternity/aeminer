@@ -58,11 +58,11 @@
 -type instance()          :: aeminer_pow:instance()
                            | undefined.
 
--type exec()              :: string().
+-type exec()              :: binary().
 
 -type exec_group()        :: binary().
 
--type extra_args()        :: string().
+-type extra_args()        :: binary().
 
 -type hex_enc_header()    :: boolean().
 
@@ -120,9 +120,9 @@
 config(Exec, ExecGroup, ExtraArgs, HexEncHdr, Repeats, EdgeBits, Instances) when
       ?IS_CONFIG(Exec, ExecGroup, ExtraArgs, HexEncHdr, Repeats, EdgeBits, Instances) ->
     #config{
-       exec           = binary_to_list(Exec),
+       exec           = Exec,
        exec_group     = ExecGroup,
-       extra_args     = binary_to_list(ExtraArgs),
+       extra_args     = ExtraArgs,
        hex_enc_header = HexEncHdr,
        repeats        = Repeats,
        edge_bits      = EdgeBits,
@@ -204,17 +204,20 @@ verify(Data, Nonce, Soln, Target, EdgeBits) when
 %% Internal functions.
 
 generate_int(Hash, Nonce, Target,
-             #config{exec = Exec, extra_args = ExtraArgs0,
+             #config{exec = Exec0, extra_args = ExtraArgs0,
                      hex_enc_header = HexEncHdr} = Config, Instance) ->
-    ExtraArgs   = case is_miner_instance_addressation_enabled(Config) of
-                      true  -> ExtraArgs0 ++ " -d " ++ integer_to_list(Instance);
-                      false -> ExtraArgs0
-                  end,
-    EncodedHash = case HexEncHdr of
-                      true  -> hex_string(Hash);
-                      false -> Hash
-                  end,
+    ExtraArgs =
+        case is_miner_instance_addressation_enabled(Config) of
+            true  -> binary_to_list(ExtraArgs0) ++ " -d " ++ integer_to_list(Instance);
+            false -> binary_to_list(ExtraArgs0)
+        end,
+    EncodedHash =
+        case HexEncHdr of
+            true  -> hex_string(Hash);
+            false -> Hash
+        end,
     ExecBinDir  = exec_bin_dir(Config),
+    Exec = binary_to_list(Exec0),
     generate_int(EncodedHash, Nonce, Target, ExecBinDir, Exec, ExtraArgs, Config).
 
 generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs,
@@ -464,7 +467,7 @@ parse_generation_result(["Solution" ++ NonceValuesStr | Rest],
     [NonceStr | SolStrs] =  string:tokens(NonceValuesStr, " "),
     Soln = [list_to_integer(string:trim(V, both, [$\r]), 16) || V <- SolStrs],
     case {length(Soln), test_target(Soln, Target, EdgeBits)} of
-        {42, true} ->
+        {?SOLUTION_SIZE, true} ->
             stop_execution(OsPid),
             case parse_nonce_str(NonceStr) of
                 {ok, Nonce} ->
@@ -474,8 +477,8 @@ parse_generation_result(["Solution" ++ NonceValuesStr | Rest],
                     ?debug("Bad nonce: ~p", [Err]),
                     Err
             end;
-        {N, _} when N /= 42 ->
-            ?debug("Solution has wrong length (~p) should be 42", [N]),
+        {N, _} when N /= ?SOLUTION_SIZE ->
+            ?debug("Solution has wrong length (~p) should be ~p", [N, ?SOLUTION_SIZE]),
             %% No nonce in solution, old miner exec?
             stop_execution(OsPid),
             {error, bad_miner};
