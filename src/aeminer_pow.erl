@@ -9,7 +9,6 @@
 -export([integer_to_scientific/1,
          next_nonce/2,
          pick_nonce/0,
-         pick_nonce/1,
          scientific_to_integer/1,
          target_to_difficulty/1,
          test_target/2,
@@ -119,11 +118,7 @@ next_nonce(Nonce, Cfg) ->
 
 -spec pick_nonce() -> nonce().
 pick_nonce() ->
-    pick_nonce(?MAX_NONCE).
-
--spec pick_nonce(1..?MAX_NONCE) -> nonce().
-pick_nonce(Max) ->
-    rand:uniform(Max + 1) - 1.
+    rand:uniform(?MAX_NONCE + 1) - 1.
 
 -spec trim_nonce(nonce(), config()) -> nonce().
 trim_nonce(Nonce, Cfg) ->
