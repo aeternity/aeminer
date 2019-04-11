@@ -24,13 +24,16 @@
          get_node_size/1
         ]).
 
--export([generate/5,
+-export([hash_data/1,
+         generate/5,
+         generate_from_hash/5,
          verify/5,
          verify_proof/4,
          get_target/2
         ]).
 
 -export_type([hashable/0,
+              hash/0,
               exec/0,
               exec_group/0,
               extra_args/0,
@@ -52,6 +55,8 @@
 -include("aeminer.hrl").
 
 -type hashable()          :: aeminer_blake2b_256:hashable().
+
+-type hash()              :: aeminer_blake2b_256:hash().
 
 -type nonce()             :: aeminer_pow:nonce().
 
@@ -152,6 +157,10 @@ extra_args(#config{extra_args = ExtraArgs}) ->
 hex_enc_header(#config{hex_enc_header = HexEncHdr}) ->
     HexEncHdr.
 
+-spec hash_data(hashable()) -> hash().
+hash_data(Data) ->
+    aeminer_blake2b_256:hash(Data).
+
 %%------------------------------------------------------------------------------
 %% Proof of Work generation with default settings
 %%
@@ -173,9 +182,12 @@ hex_enc_header(#config{hex_enc_header = HexEncHdr}) ->
     {ok, {nonce(), solution()}} | {error, no_solution} | {error, {runtime, term()}}.
 generate(Data, Target, Nonce, Config, Instance) when
       Nonce >= 0, Nonce =< ?MAX_NONCE ->
-    %% Hash Data and convert the resulting binary to a base64 string for Cuckoo
-    %% Since this hash is purely internal, we don't use api encoding
-    Hash   = aeminer_blake2b_256:hash(Data),
+    Hash = aeminer_blake2b_256:hash(Data),
+    generate_from_hash(Hash, Target, Nonce, Config, Instance).
+
+-spec generate_from_hash(hash(), sci_target(), nonce(), config(), instance()) ->
+    {ok, {nonce(), solution()}} | {error, no_solution} | {error, {runtime, term()}}.
+generate_from_hash(Hash, Target, Nonce, Config, Instance) ->
     Hash64 = base64:encode_to_string(Hash),
     ?debug("Generating solution for data hash ~p and nonce ~p with target ~p.",
            [Hash, Nonce, Target]),
