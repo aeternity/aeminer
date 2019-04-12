@@ -6,12 +6,14 @@
               hash/0
              ]).
 
+-define(HASH_BYTES_SIZE, 32).
+
 -type hashable() :: binary().
 
--type hash()     :: binary().
+-type hash()     :: <<_:(?HASH_BYTES_SIZE * 8)>>.
 
 -spec hash(hashable()) -> hash().
 hash(Bin) ->
-    {ok, Hash} = enacl:generichash(32, Bin),
+    {ok, Hash} = enacl:generichash(?HASH_BYTES_SIZE, Bin),
     Hash.
 
