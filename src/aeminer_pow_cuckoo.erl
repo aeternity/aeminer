@@ -29,6 +29,7 @@
          generate_from_hash/5,
          verify/5,
          verify_proof/4,
+         verify_proof_from_hash/4,
          get_target/2
         ]).
 
@@ -226,6 +227,10 @@ verify_proof(Data, Nonce, Solution, EdgeBits) ->
     %% Cuckoo has an 80 byte header, we have to use that as well
     %% packed Hash + Nonce = 56 bytes, add 24 bytes of 0:s
     Hash = aeminer_blake2b_256:hash(Data),
+    verify_proof_from_hash(Hash, Nonce, Solution, EdgeBits).
+
+-spec verify_proof_from_hash(hash(), nonce(), solution(), edge_bits()) -> boolean().
+verify_proof_from_hash(Hash, Nonce, Solution, EdgeBits) ->
     Header0 = pack_header_and_nonce(Hash, Nonce),
     Header = <<(list_to_binary(Header0))/binary, 0:(8*24)>>,
     verify_proof_(Header, Solution, EdgeBits).
