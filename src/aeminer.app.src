@@ -5,8 +5,8 @@
   {applications,
    [kernel,
     stdlib,
-    lager,
     enacl,
+    hut,
     aecuckoo,
     aecuckooprebuilt
    ]},

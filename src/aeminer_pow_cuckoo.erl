@@ -53,6 +53,7 @@
         ]).
 -endif.
 
+-include_lib("hut/include/hut.hrl").
 -include("aeminer.hrl").
 
 -type hashable()          :: aeminer_blake2b_256:hashable().
@@ -117,11 +118,6 @@
        (is_integer(Repeats) and (Repeats > 0)) and
        (is_integer(EdgeBits) and (EdgeBits > 0)) and
        (is_list(Instances) or (Instances =:= undefined))).
-
--define(debug(F, A), aeminer:debug(F, A)).
--define(info(F, A),  aeminer:info(F, A)).
--define(warning(F, A), aeminer:warning(F, A)).
--define(error(F, A), aeminer:error(F, A)).
 
 %%%=============================================================================
 %%% API
@@ -190,13 +186,13 @@ generate(Data, Target, Nonce, Config, Instance) when
     {ok, {nonce(), solution()}} | {error, no_solution} | {error, {runtime, term()}}.
 generate_from_hash(Hash, Target, Nonce, Config, Instance) ->
     Hash64 = base64:encode_to_string(Hash),
-    ?debug("Generating solution for data hash ~p and nonce ~p with target ~p.",
+    ?log(debug, "Generating solution for data hash ~p and nonce ~p with target ~p.",
            [Hash, Nonce, Target]),
     case generate_int(Hash64, Nonce, Target, Config, Instance) of
         {ok, Nonce1, Soln} ->
             {ok, {Nonce1, Soln}};
         {error, no_value} ->
-            ?debug("No cuckoo solution found", []),
+            ?log(debug, "No cuckoo solution found", []),
             {error, no_solution};
         {error, Rsn} ->
             %% Exec failed (segfault, not found, etc.): let miner decide
@@ -266,7 +262,7 @@ generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs,
              #config{repeats = Repeats0, edge_bits = EdgeBits}) ->
     Repeats = integer_to_list(Repeats0),
     Args = ["-h", Hash, "-n", integer_to_list(Nonce), "-r", Repeats | string:tokens(MinerExtraArgs, " ")],
-    ?info("Executing cmd '~s ~s'", [MinerBin, lists:concat(lists:join(" ", Args))]),
+    ?log(info, "Executing cmd '~s ~s'", [MinerBin, lists:concat(lists:join(" ", Args))]),
     Old = process_flag(trap_exit, true),
     try exec_run(MinerBin, MinerBinDir, Args) of
         {ok, Port, OsPid} ->
@@ -344,7 +340,7 @@ verify_proof_(Header, Solution, EdgeBits) ->
         end
     catch
         throw:{error, Rsn} ->
-            ?info("Proof verification failed for ~p: ~p", [Solution, Rsn]),
+            ?log(info, "Proof verification failed for ~p: ~p", [Solution, Rsn]),
             false
     end.
 
@@ -499,20 +495,20 @@ parse_generation_result(["Solution" ++ NonceValuesStr | Rest],
             stop_execution(OsPid),
             case parse_nonce_str(NonceStr) of
                 {ok, Nonce} ->
-                    ?debug("Solution found: ~p", [Soln]),
+                    ?log(debug, "Solution found: ~p", [Soln]),
                     {ok, Nonce, Soln};
                 Err = {error, _} ->
-                    ?debug("Bad nonce: ~p", [Err]),
+                    ?log(debug, "Bad nonce: ~p", [Err]),
                     Err
             end;
         {N, _} when N /= ?SOLUTION_SIZE ->
-            ?debug("Solution has wrong length (~p) should be ~p", [N, ?SOLUTION_SIZE]),
+            ?log(debug, "Solution has wrong length (~p) should be ~p", [N, ?SOLUTION_SIZE]),
             %% No nonce in solution, old miner exec?
             stop_execution(OsPid),
             {error, bad_miner};
         {_, false} ->
             %% failed to meet target: go on, we may find another solution
-            ?debug("Failed to meet target (~p)", [Target]),
+            ?log(debug, "Failed to meet target (~p)", [Target]),
             parse_generation_result(Rest, State)
     end;
 parse_generation_result([_Msg | T], State) ->
@@ -530,7 +526,7 @@ parse_nonce_str(S) ->
 %%------------------------------------------------------------------------------
 stop_execution(OsPid) ->
     exec_kill(OsPid),
-    ?debug("Mining OS process ~p stopped", [OsPid]),
+    ?log(debug, "Mining OS process ~p stopped", [OsPid]),
     ok.
 
 %%------------------------------------------------------------------------------
@@ -562,10 +558,10 @@ exec_run(Cmd, Dir, Args) ->
         Port = erlang:open_port(PortName, PortSettings),
         case erlang:port_info(Port, os_pid) of
             {os_pid, OsPid} ->
-                ?debug("External mining process started with OS pid ~p", [OsPid]),
+                ?log(debug, "External mining process started with OS pid ~p", [OsPid]),
                 {ok, Port, OsPid};
             undefined ->
-                ?warning("External mining process finished before ~p could acquire the OS pid", [?MODULE]),
+                ?log(warning, "External mining process finished before ~p could acquire the OS pid", [?MODULE]),
                 {ok, Port, undefined}
         end
     catch
