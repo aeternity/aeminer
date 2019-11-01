@@ -1,0 +1,18 @@
+%% -*- mode:erlang; erlang-indent-level:4; indent-tabs-mode:nil -*-
+
+RemoveApps = [aecuckoo, aecuckooprebuilt].
+Base = filename:basename(SCRIPT, ".script").
+Dir = filename:dirname(SCRIPT).
+{ok, [{application,_,Opts} = App]} = file:consult(filename:join(Dir, Base)).
+case os:getenv("AE_DISABLE_CUCKOO") =/= false of
+    true ->
+        {_, Apps} = lists:keyfind(applications, 1, Opts),
+        Env = proplists:get_value(env, Opts, []),
+        Env1 = lists:keystore(use_cuckoo, 1, Env, {use_cuckoo, false}),
+        Apps1 = Apps -- RemoveApps,
+        Opts1 = lists:keyreplace(applications, 1, Opts, {applications, Apps1}),
+        Opts2 = lists:keystore(env, 1, Opts1, {env, Env1}),
+        setelement(3, App, Opts2);
+    false ->
+        App
+end.
