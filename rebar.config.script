@@ -1,5 +1,4 @@
 %% -*- mode:erlang; erlang-indent-level:4; indent-tabs-mode:nil -*-
-io:fwrite("Running ~p~n", [SCRIPT]).
 case os:getenv("AE_DISABLE_CUCKOO") =/= false of
     true ->
         RemoveApps = [aecuckoo, aecuckooprebuilt],
@@ -11,10 +10,7 @@ case os:getenv("AE_DISABLE_CUCKOO") =/= false of
         CONFIG1 = lists:keyreplace(deps, 1, CONFIG, {deps, NewDeps}),
         Plugins1 = [P || P <- Plugins,
                          not lists:member(element(1,P), RemovePlugins)],
-        CONFIG2 = lists:keystore(plugins, 1, CONFIG1, {plugins, Plugins1}),
-        io:fwrite("CONFIG2 = ~p~n", [CONFIG2]),
-        CONFIG2;
+        lists:keystore(plugins, 1, CONFIG1, {plugins, Plugins1});
     false ->
-        io:fwrite("Using cuckoo~n", []),
         CONFIG
 end.
