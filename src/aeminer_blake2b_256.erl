@@ -14,6 +14,5 @@
 
 -spec hash(hashable()) -> hash().
 hash(Bin) ->
-    {ok, Hash} = enacl:generichash(?HASH_BYTES_SIZE, Bin),
-    Hash.
+    enacl:generichash(?HASH_BYTES_SIZE, Bin).
 
