@@ -10,7 +10,7 @@
   0},
  {<<"enacl">>,
   {git,"https://github.com/aeternity/enacl.git",
-      {ref,"793ddb502f7fe081302e1c42227dca70b09f8e17"}},
+      {ref,"67fceef42c0d055570f2e67b571f8d1f8de2f204"}},
   0},
  {<<"hut">>,{pkg,<<"hut">>,<<"1.3.0">>},0}]}.
 [
