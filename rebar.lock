@@ -1,7 +1,7 @@
 {"1.1.0",
 [{<<"aecuckoo">>,
   {git,"https://github.com/aeternity/aecuckoo.git",
-      {ref,"695fbbc8245dbadab7edf4e4a119f094a5a400d3"}},
+      {ref,"996ffcdb336f1c2254ea8e1b1a657b05b7ea4a81"}},
   0},
  {<<"aecuckooprebuilt">>,
   {aecuckooprebuilt_app_with_priv_from_git,
