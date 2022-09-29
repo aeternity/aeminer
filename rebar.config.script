@@ -1,0 +1,16 @@
+%% -*- mode:erlang; erlang-indent-level:4; indent-tabs-mode:nil -*-
+case os:getenv("AE_DISABLE_CUCKOO") =/= false of
+    true ->
+        RemoveApps = [aecuckoo, aecuckooprebuilt],
+        RemovePlugins = [rebar_aecuckooprebuilt_dep],
+        {_, Deps} = lists:keyfind(deps, 1, CONFIG),
+        NewDeps = [D || D <- Deps,
+                        not lists:member(element(1,D), RemoveApps)],
+        Plugins = proplists:get_value(plugins, CONFIG, []),
+        CONFIG1 = lists:keyreplace(deps, 1, CONFIG, {deps, NewDeps}),
+        Plugins1 = [P || P <- Plugins,
+                         not lists:member(element(1,P), RemovePlugins)],
+        lists:keystore(plugins, 1, CONFIG1, {plugins, Plugins1});
+    false ->
+        CONFIG
+end.
